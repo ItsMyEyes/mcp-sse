@@ -1,0 +1,9 @@
+version: '3'
+services:
+  mcp-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: always

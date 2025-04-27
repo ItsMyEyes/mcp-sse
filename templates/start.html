@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect Gmail Account</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .auth-container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-top: 40px;
+        }
+        h1 {
+            color: #4285F4;
+        }
+        .logo {
+            width: 100px;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 30px;
+        }
+        .permission {
+            text-align: left;
+            margin-bottom: 5px;
+        }
+        .permissions-list {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        .auth-button {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+        }
+        .auth-button:hover {
+            background-color: #3367D6;
+        }
+        .icon {
+            margin-right: 10px;
+        }
+        .cancel-link {
+            display: block;
+            margin-top: 15px;
+            color: #757575;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+            <path fill="#4285F4" d="M64 112h384v288H64z"/>
+            <path fill="#FFFFFF" d="M256 288L64 160v240h384V160z"/>
+            <path fill="#EA4335" d="M256 256l192-96v-48H64v48z"/>
+        </svg>
+        <h1>Connect Your Gmail Account</h1>
+        <p class="message">
+            Connect your Gmail account to access and manage your emails directly through the application.
+        </p>
+        
+        <div class="permissions-list">
+            <p><strong>This application will be able to:</strong></p>
+            <p class="permission">✓ Read your emails and email labels</p>
+            <p class="permission">✓ View email attachments</p>
+            <p class="permission">✓ Search your email</p>
+            <p><small>Note: This application cannot send emails or modify your account.</small></p>
+        </div>
+        
+        <a href="{{ auth_url }}" class="auth-button">
+            <span class="icon">📧</span> Connect Gmail
+        </a>
+        <a href="#" onclick="window.close()" class="cancel-link">Cancel</a>
+    </div>
+</body>
+</html> 

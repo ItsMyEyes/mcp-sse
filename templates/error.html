@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail OAuth Error</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .error-container {
+            background-color: #fff0f0;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-top: 40px;
+        }
+        h1 {
+            color: #d32f2f;
+        }
+        .icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 20px;
+        }
+        .error-details {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: left;
+            font-family: monospace;
+            margin-bottom: 20px;
+            overflow-wrap: break-word;
+        }
+        .close-button {
+            background-color: #757575;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .close-button:hover {
+            background-color: #616161;
+        }
+        .retry-button {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .retry-button:hover {
+            background-color: #3367D6;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="icon">❌</div>
+        <h1>Authentication Failed</h1>
+        <p class="message">
+            There was a problem connecting to your Gmail account.
+        </p>
+        <div class="error-details">
+            {{ error }}
+        </div>
+        <button class="retry-button" onclick="window.location.href='/oauth/start'">Try Again</button>
+        <button class="close-button" onclick="window.close()">Close Window</button>
+    </div>
+</body>
+</html> 

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail OAuth Success</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .success-container {
+            background-color: #f0f8ff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-top: 40px;
+        }
+        h1 {
+            color: #2c8a56;
+        }
+        .icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 20px;
+        }
+        .close-button {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .close-button:hover {
+            background-color: #3367D6;
+        }
+    </style>
+</head>
+<body>
+    <div class="success-container">
+        <div class="icon">✅</div>
+        <h1>Authentication Successful</h1>
+        <p class="message">
+            Your Gmail account has been successfully connected. You can now close this window and return to the application.
+        </p>
+        <button class="close-button" onclick="window.close()">Close Window</button>
+    </div>
+    <script>
+        // Auto close after 5 seconds
+        setTimeout(function() {
+            window.close();
+        }, 5000);
+    </script>
+</body>
+</html> 
