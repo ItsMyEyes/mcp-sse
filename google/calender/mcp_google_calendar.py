@@ -29,13 +29,9 @@ fastapi_app = FastAPI(title="Google Calendar OAuth")
 app = FastMCP('google-calendar')
 
 # OAuth configuration
-REDIRECT_URI = "https://oauth.kiyora.dev/oauth/callback"
+REDIRECT_URI = "https://oauth.kiyora.dev/oauth/callback/google-calendar"
 OAUTH_SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-
-# Modify the MCP tools to use the correct FastAPI port
-FASTAPI_PORT = 8000
-MCP_PORT = 8080
 
 # Templates
 templates = Jinja2Templates(directory="templates")
@@ -193,7 +189,7 @@ class GoogleCalendarAuth:
             self.update_session(session_id, 'failed')
             raise e
 
-@fastapi_app.get("/oauth/callback")
+@fastapi_app.get("/oauth/callback/google-calendar")
 async def oauth_callback(request: FastAPIRequest, code: str, state: str):
     """
     Handle OAuth callback from Google.

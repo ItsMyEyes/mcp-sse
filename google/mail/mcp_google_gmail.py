@@ -30,7 +30,7 @@ fastapi_app = FastAPI(title="Google Gmail OAuth")
 app = FastMCP('google-gmail')
 
 # OAuth configuration
-REDIRECT_URI = "https://oauth.kiyora.dev/oauth/callback"
+REDIRECT_URI = "https://oauth.kiyora.dev/oauth/callback/google-gmail"
 OAUTH_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 # MCP tools
@@ -496,7 +496,7 @@ class GmailAPI:
 # Create a shared API instance
 gmail_api = GmailAPI()
 
-@fastapi_app.get("/oauth/callback")
+@fastapi_app.get("/oauth/callback/google-gmail")
 async def oauth_callback(request: FastAPIRequest, code: str, state: str):
     """
     Handle OAuth callback from Google.
