@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Request as FastAPIRequest
+from fastapi import APIRouter, HTTPException, Request as FastAPIRequest, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+
 import os
 
 from .google_auth import GoogleUnifiedAuth, GMAIL_SCOPE, CALENDAR_SCOPE
@@ -20,7 +21,8 @@ async def oauth_callback(
     request: FastAPIRequest, 
     service_name: str, 
     code: str, 
-    state: str
+    state: str,
+    scope: str = Query(None)
 ):
     """
     Handle OAuth callback from services.
@@ -40,7 +42,7 @@ async def oauth_callback(
         )
 
     try:
-        creds = auth.handle_oauth_callback(state, code)
+        creds = auth.handle_oauth_callback(state, code, scope)
         session = auth.get_session(state)
         
         if not session or not creds:
@@ -52,6 +54,7 @@ async def oauth_callback(
                 }
             )
         
+        auth.reload_sessions()
         # Return success page
         return templates.TemplateResponse(
             "success.html",

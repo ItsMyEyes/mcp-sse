@@ -144,7 +144,7 @@ class GmailAPI:
         """
         # Get schema definition for this operation
         
-        creds, auth_url = self.auth.authenticate(session_id)
+        creds, auth_url = self.auth.authenticate(session_id, scope=GMAIL_SCOPE)
         
         if not creds:
             return {
@@ -249,7 +249,7 @@ class GmailAPI:
         """
         # Get schema definition for this operation
         
-        creds, auth_url = self.auth.authenticate(session_id)
+        creds, auth_url = self.auth.authenticate(session_id, scope=GMAIL_SCOPE)
         
         if not creds:
             return {
@@ -293,7 +293,7 @@ class GmailAPI:
         Returns:
             Dict containing attachment data
         """
-        creds, auth_url = self.auth.authenticate(session_id)
+        creds, auth_url = self.auth.authenticate(session_id, scope=GMAIL_SCOPE)
         
         if not creds:
             return {
@@ -352,7 +352,7 @@ class GmailAPI:
         """
         # Get schema definition for this operation
         
-        creds, auth_url = self.auth.authenticate(session_id)
+        creds, auth_url = self.auth.authenticate(session_id, scope=GMAIL_SCOPE)
         
         if not creds:
             return {
@@ -436,7 +436,7 @@ class GmailAPI:
 gmail_api = GmailAPI()
 
 @app.tool()
-async def get_auth_status(session_id: str) -> str:
+async def get_auth_status_email(session_id: str) -> str:
     """
     Check the authentication status for Gmail access and provide OAuth URL if needed.
     

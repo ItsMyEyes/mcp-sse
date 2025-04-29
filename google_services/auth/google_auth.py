@@ -6,20 +6,21 @@ from typing import Dict, Optional, Tuple, List, Set, Union
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
 from google_auth_oauthlib.flow import Flow
+from config import settings
+
+# Set OAuth library to be more lenient with scopes
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "0"
 
 # Available scopes
 GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar'
-
-# Default redirect URI
-DEFAULT_REDIRECT_URI = "https://oauthlaptop.kiyora.dev/auth/callback"
 
 class GoogleUnifiedAuth:
     def __init__(self, credentials_file: str = 'credentials.json', sessions_file: str = 'sessions.json'):
         self.credentials_file = credentials_file
         self.sessions_file = sessions_file
         self.sessions: Dict[str, Dict] = {}
-        self.REDIRECT_URI = DEFAULT_REDIRECT_URI
+        self.REDIRECT_URI = settings.GOOGLE_REDIRECT_URI
         self._load_sessions()
 
     def _load_sessions(self) -> None:
@@ -32,6 +33,10 @@ class GoogleUnifiedAuth:
                 for session_id, session in self.sessions.items():
                     if 'scope' in session and isinstance(session['scope'], str):
                         session['scopes'] = [session.pop('scope')]
+
+    def reload_sessions(self) -> None:
+        """Reload sessions from the JSON file."""
+        self._load_sessions()
 
     def _save_sessions(self) -> None:
         """Save sessions to the JSON file."""
@@ -66,6 +71,7 @@ class GoogleUnifiedAuth:
 
     def get_session(self, session_id: str) -> Optional[Dict]:
         """Get session information."""
+        self.reload_sessions()
         return self.sessions.get(session_id)
 
     def update_session(self, session_id: str, status: str, token_data: Optional[Dict] = None) -> None:
@@ -93,7 +99,10 @@ class GoogleUnifiedAuth:
             return None
 
         # Get authorized scopes for this session
-        authorized_scopes = session.get('scopes', [])
+        token_data = session.get('token_data', {
+            'scopes': []
+        })
+        authorized_scopes = token_data.get('scopes', [])
         
         # Check if required scopes are authorized
         if required_scopes:
@@ -204,6 +213,8 @@ class GoogleUnifiedAuth:
             self.sessions[session_id]['scopes'] = new_scopes
             self.sessions[session_id]['status'] = 'pending_additional_scopes'
             self._save_sessions()
+
+            print("new_scopes", new_scopes)
             
             # Get auth URL for all scopes
             auth_url = self.get_auth_url(session_id, new_scopes)
@@ -213,16 +224,18 @@ class GoogleUnifiedAuth:
         if not session:
             self.create_session(session_id, scope)
         
+        # Get auth URL for initial authentication
         auth_url = self.get_auth_url(session_id)
         return None, auth_url
 
-    def handle_oauth_callback(self, session_id: str, code: str) -> Optional[Credentials]:
+    def handle_oauth_callback(self, session_id: str, code: str, new_scopes: Optional[List[str]] = None) -> Optional[Credentials]:
         """
         Handle OAuth callback.
         
         Args:
             session_id: Session ID
             code: Authorization code from OAuth provider
+            new_scopes: Optional list of new scopes to add to the session
             
         Returns:
             Credentials if successful, None otherwise
@@ -232,7 +245,14 @@ class GoogleUnifiedAuth:
             return None
 
         try:
-            scopes = session.get('scopes', [])
+            # Get the scopes from the session
+            current_scopes = set(session.get('scopes', []))
+            
+            # If new scopes are provided, merge them with current scopes
+            if new_scopes:
+                current_scopes.update(new_scopes)
+            
+            scopes = list(current_scopes)
             previous_status = session.get('status', '')
             is_adding_scopes = previous_status == 'pending_additional_scopes'
             
@@ -243,7 +263,7 @@ class GoogleUnifiedAuth:
             with open(self.credentials_file, 'r') as f:
                 client_config = json.load(f)
             
-            # Create flow instance
+            # Create flow instance with all requested scopes
             flow = Flow.from_client_config(
                 client_config,
                 scopes=scopes,
@@ -254,33 +274,33 @@ class GoogleUnifiedAuth:
             flow.fetch_token(code=code)
             creds = flow.credentials
 
-            # Prepare token data, potentially preserving previous refresh token
+            print("Scope>>>>>>>>", scopes)
+            
+            # Prepare token data
             token_data = {
                 'token': creds.token,
                 'client_id': creds.client_id,
-                'client_secret': creds.client_secret
+                'client_secret': creds.client_secret,
+                'scopes': scopes  # Store the authorized scopes
             }
             
-            # If adding scopes and no new refresh token but had one before, keep the old refresh token
-            if is_adding_scopes and not creds.refresh_token and previous_token_data and previous_token_data.get('refresh_token'):
-                token_data['refresh_token'] = previous_token_data.get('refresh_token')
-            else:
+            # Handle refresh token
+            if creds.refresh_token:
                 token_data['refresh_token'] = creds.refresh_token
+            elif previous_token_data and previous_token_data.get('refresh_token'):
+                # If no new refresh token but we had one before, keep the old one
+                token_data['refresh_token'] = previous_token_data.get('refresh_token')
             
             # Update last_updated timestamp
             token_data['last_updated'] = datetime.datetime.utcnow().isoformat()
             
-            # Add information about the authorized scopes
-            token_data['authorized_scopes'] = scopes
-            
-            # Update session
+            # Update session with new scopes
+            self.sessions[session_id]['scopes'] = scopes
             self.sessions[session_id]['token_data'] = token_data
             self.sessions[session_id]['status'] = 'completed'
-            
-            # Record when we last successfully authorized
             self.sessions[session_id]['last_authorized'] = datetime.datetime.utcnow().isoformat()
             
-            if is_adding_scopes:
+            if is_adding_scopes or new_scopes:
                 # Record that we successfully added scopes
                 self.sessions[session_id]['scopes_history'] = self.sessions[session_id].get('scopes_history', [])
                 self.sessions[session_id]['scopes_history'].append({
@@ -307,7 +327,7 @@ class GoogleUnifiedAuth:
                 
             # Re-raise the exception
             raise e
-            
+
     def has_scope(self, session_id: str, scope: str) -> bool:
         """
         Check if a session has a specific scope authorized.

@@ -3,7 +3,8 @@ import json
 import datetime
 import secrets
 import asyncio
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union
+from pydantic import BaseModel, Field, field_validator
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request as GoogleRequest
@@ -15,13 +16,49 @@ from starlette.requests import Request as StarletteRequest
 from starlette.routing import Mount, Route
 from mcp.server import Server
 import uvicorn
-from google_services.auth.google_auth import GoogleUnifiedAuth
+from google_services.auth.google_auth import GoogleUnifiedAuth, CALENDAR_SCOPE
 
 # Initialize FastMCP server
 app = FastMCP('google-calendar')
 
+# Schema definitions
+class EventTime(BaseModel):
+    dateTime: Optional[str] = None
+    date: Optional[str] = None
+    timeZone: Optional[str] = None
+
+class EventReminder(BaseModel):
+    method: str = Field(..., pattern='^(email|popup)$')
+    minutes: int = Field(..., gt=0)
+
+class EventReminders(BaseModel):
+    useDefault: bool = True
+    overrides: Optional[List[EventReminder]] = None
+
+class EventAttendee(BaseModel):
+    email: str
+    displayName: Optional[str] = None
+    responseStatus: Optional[str] = Field(None, pattern='^(accepted|declined|tentative)$')
+
+class CalendarEvent(BaseModel):
+    summary: str
+    description: Optional[str] = None
+    start: EventTime
+    end: EventTime
+    location: Optional[str] = None
+    reminders: Optional[EventReminders] = None
+    recurrence: Optional[List[str]] = None
+    attendees: Optional[List[EventAttendee]] = None
+
+    @field_validator('start', 'end')
+    @classmethod
+    def validate_time(cls, v):
+        if not v.dateTime and not v.date:
+            raise ValueError('Either dateTime or date must be provided')
+        return v
+
 @app.tool()
-async def get_auth_status(session_id: str) -> str:
+async def get_auth_status_calender(session_id: str) -> str:
     """
     Check the authentication status of a session and get the OAuth URL if needed.
     
@@ -48,7 +85,7 @@ async def get_auth_status(session_id: str) -> str:
         return "Error: Session ID is required"
 
     auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
     
     if creds:
         return "Status: Authenticated"
@@ -94,7 +131,7 @@ async def list_calendar_events(
         return "Error: Session ID is required"
 
     auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
     
     if not creds:
         return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
@@ -131,72 +168,7 @@ async def list_calendar_events(
         if not events:
             return "No events found in the specified time range."
             
-        response = "Calendar Events:\n\n"
-        for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
-            end = event['end'].get('dateTime', event['end'].get('date'))
-            response += f"-----\n"
-            response += f"EventID: {event['id']}\n"
-            response += f"Title: {event.get('summary', 'No title')}\n"
-            response += f"Start: {start} | End: {end}\n"
-            if event.get('description'):
-                response += f"Content: {event['description']}\n"
-            response += f"-----\n\n"
-        
-        return response
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.tool()
-async def list_colors(session_id: str) -> str:
-    """
-    List available calendar colors and their IDs.
-    
-    Usage:
-    - Get available color options for events
-    - Find color IDs for event customization
-    - View color names and their corresponding IDs
-    
-    Parameters:
-        session_id (str): Unique identifier for the user's session
-        
-    Returns:
-        str: Formatted text response with available colors
-        Format:
-        -----
-        Color ID: [id]
-        Name: [name]
-        Background: [background_color]
-        Foreground: [foreground_color]
-        -----
-        
-    Example:
-        colors = await list_colors("abc123")
-        # Returns list of available colors with their IDs
-    """
-    if not session_id:
-        return "Error: Session ID is required"
-
-    auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
-    
-    if not creds:
-        return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
-    
-    try:
-        service = build('calendar', 'v3', credentials=creds)
-        colors = service.colors().get().execute()
-        
-        # response = "Available Calendar Colors:\n\n"
-        response = ""
-        for color_id, color_info in colors['event'].items():
-            response += f"-----\n"
-            response += f"Color ID: {color_id}\n"
-            response += f"Background: {color_info['background']}\n"
-            response += f"Foreground: {color_info['foreground']}\n"
-            response += f"-----\n\n"
-        
-        return response
+        return events
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -204,17 +176,19 @@ async def list_colors(session_id: str) -> str:
 async def create_calendar_event(
     session_id: str,
     event_data: Dict,
-    timezone: str = "Asia/Jakarta"
-) -> str:
+    timezone: str = "Asia/Jakarta",
+    add_google_meet: bool = False,
+    attendees: Optional[List[Dict]] = None,
+    send_notifications: bool = True
+) -> Dict:
     """
-    Create a new calendar event.
+    Create a new calendar event with optional Google Meet integration.
     
     Usage:
     - Schedule new meetings or appointments
     - Add events to user's calendar
     - Set up recurring events
-    - Customize event colors
-    - Set event timezone
+    - Create Google Meet meetings
     - Manage event attendees
     - Set up event reminders
     - Configure event recurrence
@@ -227,107 +201,119 @@ async def create_calendar_event(
             - start (dict): Start time with dateTime or date
             - end (dict): End time with dateTime or date
             - location (str, optional): Event location
-            - attendees (list, optional): List of attendee objects
-                - email (str): Email address of the attendee
-            - colorId (str, optional): Color ID for the event (use list_colors to see available IDs)
             - reminders (dict, optional): Reminder settings
                 - useDefault (bool): Whether to use default reminders
                 - overrides (list, optional): Custom reminders
-                    - method (str): "email" or "popup" (defaults to popup)
-                    - minutes (int): Minutes before event to trigger reminder
-            - recurrence (list, optional): List of recurrence rules in RFC5545 format
+                    - method (str): "email" or "popup"
+                    - minutes (int): Minutes before event
+            - recurrence (list, optional): List of recurrence rules
                 Example: ["RRULE:FREQ=WEEKLY;COUNT=5"]
         timezone (str): Timezone for the event (default: "Asia/Jakarta")
-            Examples: "Asia/Jakarta", "UTC", "America/New_York"
-            
-    Returns:
-        str: Formatted text response with created event details
-        Format:
-        -----
-        EventID: [id]
-        Title: [title]
-        Start: [start_time] | End: [end_time]
-        Timezone: [timezone]
-        Content: [description]
-        Color: [color_name]
-        Attendees: [attendee_emails]
-        Recurrence: [recurrence_rules]
-        -----
+        add_google_meet (bool): Whether to add Google Meet to the event
+        attendees (list, optional): List of attendee objects
+            - email (str): Email address
+            - displayName (str, optional): Display name
+            - responseStatus (str, optional): "accepted", "declined", "tentative"
+        send_notifications (bool): Whether to send email notifications to attendees
         
-    Example:
-        event = {
-            'summary': 'Team Meeting',
-            'start': {'dateTime': '2024-03-20T10:00:00'},
-            'end': {'dateTime': '2024-03-20T11:00:00'},
-            'attendees': [
-                {'email': 'team.member1@example.com'},
-                {'email': 'team.member2@example.com'}
-            ],
-            'colorId': '1',  # Lavender color
-            'reminders': {
-                'useDefault': False,
-                'overrides': [
-                    {'method': 'email', 'minutes': 24 * 60},  # 1 day before
-                    {'method': 'popup', 'minutes': 30}        # 30 minutes before
-                ]
-            },
-            'recurrence': [
-                'RRULE:FREQ=WEEKLY;COUNT=5'  # Weekly for 5 occurrences
-            ]
-        }
-        result = await create_calendar_event("abc123", event)
+    Returns:
+        dict: Created event details including Meet link if added
     """
     if not session_id:
-        return "Error: Session ID is required"
+        return {"error": "Session ID is required"}
+
+    print("here is the event data", event_data)
+    # Validate event data
+    try:
+        validated_event = CalendarEvent(**event_data)
+        event_data = validated_event.model_dump(exclude_none=True)
+    except Exception as e:
+        return {"error": f"Invalid event data: {str(e)}"}
+    print("here is the event data 2")
+
+    # Validate attendees if provided
+    if attendees:
+        try:
+            validated_attendees = [EventAttendee(**attendee) for attendee in attendees]
+            attendees = [attendee.model_dump(exclude_none=True) for attendee in validated_attendees]
+        except Exception as e:
+            return {"error": f"Invalid attendee data: {str(e)}"}
 
     auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
+    print("here is the event data 3")
     
     if not creds:
-        return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
+        return {"error": "Unauthenticated", "auth_url": auth_url}
     
     try:
+        print("here is the event data 4")
         service = build('calendar', 'v3', credentials=creds)
+        print("here is the event data 5")
+        # Prepare event data
+        event_body = event_data.copy()
+        
+        # Add Google Meet if requested
+        if add_google_meet:
+            event_body['conferenceData'] = {
+                'createRequest': {
+                    'requestId': f"meet_{secrets.token_hex(16)}",
+                    'conferenceSolutionKey': {'type': 'hangoutsMeet'}
+                }
+            }
+        
+        # Add attendees if provided
+        if attendees:
+            event_body['attendees'] = attendees
+        
+        # Set timezone
+        event_body['timeZone'] = timezone
+        
+        # Create event
         event = service.events().insert(
             calendarId='primary',
-            body=event_data
+            body=event_body,
+            conferenceDataVersion=1 if add_google_meet else 0,
+            sendUpdates='all' if send_notifications else 'none'
         ).execute()
         
-        start = event['start'].get('dateTime', event['start'].get('date'))
-        end = event['end'].get('dateTime', event['end'].get('date'))
-        
-        response = "Event created successfully:\n\n"
-        response += f"-----\n"
-        response += f"EventID: {event['id']}\n"
-        response += f"Title: {event.get('summary', 'No title')}\n"
-        response += f"Start: {start} | End: {end}\n"
-        response += f"Timezone: {timezone}\n"
-        if event.get('description'):
-            response += f"Content: {event['description']}\n"
-        response += f"-----\n"
+        # Format response
+        response = {
+            'id': event['id'],
+            'summary': event.get('summary', 'No title'),
+            'start': event['start'].get('dateTime', event['start'].get('date')),
+            'end': event['end'].get('dateTime', event['end'].get('date')),
+            'timezone': timezone,
+            'description': event.get('description', ''),
+            'location': event.get('location', ''),
+            'attendees': event.get('attendees', []),
+            'meet_link': event.get('conferenceData', {}).get('entryPoints', [{}])[0].get('uri', '')
+        }
         
         return response
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {"error": str(e)}
 
 @app.tool()
 async def update_calendar_event(
     session_id: str,
     event_id: str,
     event_data: Dict,
-    timezone: str = "Asia/Jakarta"
-) -> str:
+    timezone: str = "Asia/Jakarta",
+    add_google_meet: bool = False,
+    attendees: Optional[List[Dict]] = None,
+    send_notifications: bool = True
+) -> Dict:
     """
-    Update an existing calendar event.
+    Update an existing calendar event with optional Google Meet integration.
     
     Usage:
-    - Modify event details (time, title, description)
+    - Modify event details
     - Add or remove attendees
-    - Change event location
-    - Update reminder settings
-    - Change event color
-    - Update event timezone
-    - Modify recurrence rules
+    - Add Google Meet to existing event
+    - Update event time or location
+    - Change reminder settings
+    - Update recurrence rules
     
     Parameters:
         session_id (str): Unique identifier for the user's session
@@ -338,86 +324,97 @@ async def update_calendar_event(
             - start (dict, optional): Start time with dateTime or date
             - end (dict, optional): End time with dateTime or date
             - location (str, optional): Event location
-            - attendees (list, optional): List of attendee objects
-                - email (str): Email address of the attendee
-            - colorId (str, optional): Color ID for the event (use list_colors to see available IDs)
             - reminders (dict, optional): Reminder settings
-                - useDefault (bool): Whether to use default reminders
-                - overrides (list, optional): Custom reminders
-                    - method (str): "email" or "popup" (defaults to popup)
-                    - minutes (int): Minutes before event to trigger reminder
-            - recurrence (list, optional): List of recurrence rules in RFC5545 format
-                Example: ["RRULE:FREQ=WEEKLY;COUNT=5"]
+            - recurrence (list, optional): List of recurrence rules
         timezone (str): Timezone for the event (default: "Asia/Jakarta")
-            Examples: "Asia/Jakarta", "UTC", "America/New_York"
+        add_google_meet (bool): Whether to add Google Meet to the event
+        attendees (list, optional): List of attendee objects
+            - email (str): Email address
+            - displayName (str, optional): Display name
+            - responseStatus (str, optional): "accepted", "declined", "tentative"
+        send_notifications (bool): Whether to send email notifications to attendees
         
     Returns:
-        str: Formatted text response with updated event details
-        Format:
-        -----
-        EventID: [id]
-        Title: [title]
-        Start: [start_time] | End: [end_time]
-        Timezone: [timezone]
-        Content: [description]
-        Color: [color_name]
-        Attendees: [attendee_emails]
-        Recurrence: [recurrence_rules]
-        -----
-        
-    Example:
-        updates = {
-            'summary': 'Updated Team Meeting',
-            'start': {'dateTime': '2024-03-20T11:00:00'},
-            'attendees': [
-                {'email': 'new.member@example.com'}
-            ],
-            'colorId': '2',  # Sage color
-            'reminders': {
-                'useDefault': False,
-                'overrides': [
-                    {'method': 'popup', 'minutes': 15}  # 15 minutes before
-                ]
-            },
-            'recurrence': [
-                'RRULE:FREQ=WEEKLY;COUNT=3'  # Weekly for 3 occurrences
-            ]
-        }
-        result = await update_calendar_event("abc123", "event123", updates)
+        dict: Updated event details including Meet link if added
     """
     if not session_id:
-        return "Error: Session ID is required"
+        return {"error": "Session ID is required"}
+
+    # Validate event data
+    try:
+        validated_event = CalendarEvent(**event_data)
+        event_data = validated_event.model_dump(exclude_none=True)
+    except Exception as e:
+        return {"error": f"Invalid event data: {str(e)}"}
+
+    # Validate attendees if provided
+    if attendees:
+        try:
+            validated_attendees = [EventAttendee(**attendee) for attendee in attendees]
+            attendees = [attendee.model_dump(exclude_none=True) for attendee in validated_attendees]
+        except Exception as e:
+            return {"error": f"Invalid attendee data: {str(e)}"}
 
     auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
     
     if not creds:
-        return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
+        return {"error": "Unauthenticated", "auth_url": auth_url}
     
     try:
         service = build('calendar', 'v3', credentials=creds)
+        
+        # Get current event
+        current_event = service.events().get(
+            calendarId='primary',
+            eventId=event_id
+        ).execute()
+        
+        # Prepare update data
+        update_data = current_event.copy()
+        update_data.update(event_data)
+        
+        # Add Google Meet if requested
+        if add_google_meet and 'conferenceData' not in update_data:
+            update_data['conferenceData'] = {
+                'createRequest': {
+                    'requestId': f"meet_{secrets.token_hex(16)}",
+                    'conferenceSolutionKey': {'type': 'hangoutsMeet'}
+                }
+            }
+        
+        # Update attendees if provided
+        if attendees:
+            update_data['attendees'] = attendees
+        
+        # Set timezone
+        update_data['timeZone'] = timezone
+        
+        # Update event
         event = service.events().update(
             calendarId='primary',
             eventId=event_id,
-            body=event_data
+            body=update_data,
+            conferenceDataVersion=1 if add_google_meet else 0,
+            sendUpdates='all' if send_notifications else 'none'
         ).execute()
         
-        start = event['start'].get('dateTime', event['start'].get('date'))
-        end = event['end'].get('dateTime', event['end'].get('date'))
-        
-        response = "Event updated successfully:\n\n"
-        response += f"-----\n"
-        response += f"EventID: {event['id']}\n"
-        response += f"Title: {event.get('summary', 'No title')}\n"
-        response += f"Start: {start} | End: {end}\n"
-        response += f"Timezone: {timezone}\n"
-        if event.get('description'):
-            response += f"Content: {event['description']}\n"
-        response += f"-----\n"
+        # Format response
+        response = {
+            'id': event['id'],
+            'summary': event.get('summary', 'No title'),
+            'start': event['start'].get('dateTime', event['start'].get('date')),
+            'end': event['end'].get('dateTime', event['end'].get('date')),
+            'timezone': timezone,
+            'description': event.get('description', ''),
+            'location': event.get('location', ''),
+            'attendees': event.get('attendees', []),
+            'meet_link': event.get('conferenceData', {}).get('entryPoints', [{}])[0].get('uri', '')
+        }
         
         return response
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {"error": str(e)}
 
 @app.tool()
 async def delete_calendar_event(
@@ -448,7 +445,7 @@ async def delete_calendar_event(
         return "Error: Session ID is required"
 
     auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
     
     if not creds:
         return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
@@ -507,7 +504,7 @@ async def search_events_with_attachments(
         return "Error: Session ID is required"
 
     auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
     
     if not creds:
         return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
@@ -622,7 +619,7 @@ async def search_calendar_events(
         return "Error: Session ID is required"
 
     auth = GoogleUnifiedAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
     
     if not creds:
         return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
@@ -682,9 +679,153 @@ async def search_calendar_events(
     except Exception as e:
         return f"Error: {str(e)}"
 
+@app.tool()
+async def get_calendar_details(
+    session_id: str,
+    calendar_id: str = "primary"
+) -> str:
+    """
+    Get detailed information about a specific calendar.
+    
+    Usage:
+    - View calendar settings and properties
+    - Check calendar access permissions
+    - Get calendar metadata
+    
+    Parameters:
+        session_id (str): Unique identifier for the user's session
+        calendar_id (str): ID of the calendar to get details for (default: "primary")
+        
+    Returns:
+        str: Formatted text response with calendar details
+        Format:
+        -----
+        Calendar ID: [id]
+        Summary: [name]
+        Description: [description]
+        Timezone: [timezone]
+        Primary: [is_primary]
+        Access Role: [access_role]
+        Background Color: [bg_color]
+        Foreground Color: [fg_color]
+        -----
+        
+    Example:
+        details = await get_calendar_details("abc123")
+        # Returns details of the primary calendar
+    """
+    if not session_id:
+        return "Error: Session ID is required"
+
+    auth = GoogleUnifiedAuth()
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
+    
+    if not creds:
+        return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
+    
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        calendar = service.calendars().get(calendarId=calendar_id).execute()
+        
+        return calendar
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@app.tool()
+async def update_event_attendance(
+    session_id: str,
+    event_id: str,
+    response: str = "accepted",
+    comment: Optional[str] = None
+) -> str:
+    """
+    Update your attendance status for a calendar event.
+    
+    Usage:
+    - Accept event invitations
+    - Decline event invitations
+    - Mark attendance as tentative
+    - Add comments to your response
+    
+    Parameters:
+        session_id (str): Unique identifier for the user's session
+        event_id (str): ID of the event to update attendance for
+        response (str): Attendance response - "accepted", "declined", or "tentative"
+        comment (str, optional): Optional comment to include with your response
+        
+    Returns:
+        str: Success message or error
+        Format:
+        -----
+        Status: [status]
+        Event: [event_title]
+        Response: [your_response]
+        Comment: [your_comment]
+        -----
+        
+    Example:
+        # Accept an event
+        result = await update_event_attendance("abc123", "event123", "accepted")
+        
+        # Decline with comment
+        result = await update_event_attendance(
+            "abc123",
+            "event123",
+            "declined",
+            "I have a conflicting meeting"
+        )
+    """
+    if not session_id:
+        return "Error: Session ID is required"
+        
+    if response not in ["accepted", "declined", "tentative"]:
+        return "Error: Response must be 'accepted', 'declined', or 'tentative'"
+
+    auth = GoogleUnifiedAuth()
+    creds, auth_url = auth.authenticate(session_id, CALENDAR_SCOPE)
+    
+    if not creds:
+        return f"Status: Unauthenticated\nPlease authenticate here: {auth_url}"
+    
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        
+        # Get the event first to check if it exists and get the title
+        event = service.events().get(
+            calendarId='primary',
+            eventId=event_id
+        ).execute()
+        
+        # Update attendance
+        updated_event = service.events().patch(
+            calendarId='primary',
+            eventId=event_id,
+            body={
+                'attendees': [
+                    {
+                        'email': creds.id_token['email'],
+                        'responseStatus': response
+                    }
+                ]
+            }
+        ).execute()
+        
+        response_text = "Attendance Updated:\n\n"
+        response_text += f"-----\n"
+        response_text += f"Status: Success\n"
+        response_text += f"Event: {event.get('summary', 'Untitled Event')}\n"
+        response_text += f"Response: {response}\n"
+        if comment:
+            response_text += f"Comment: {comment}\n"
+        response_text += f"-----\n"
+        
+        return response_text
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 def route_mcp(debug: bool = False):
     """Create a Starlette application that can serve the provided mcp server with SSE."""
-    sse = SseServerTransport("/google-calendar/messages/")
+    sse = SseServerTransport("/gcalendar/messages/")
 
     async def handle_sse(request: StarletteRequest) -> None:
         async with sse.connect_sse(
@@ -699,6 +840,6 @@ def route_mcp(debug: bool = False):
             )
 
     return [
-        Route("/google-calendar/sse", endpoint=handle_sse),
-        Mount("/google-calendar/messages/", app=sse.handle_post_message),
+        Route("/gcalendar/sse", endpoint=handle_sse),
+        Mount("/gcalendar/messages/", app=sse.handle_post_message),
     ]

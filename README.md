@@ -1,177 +1,144 @@
-# Google Services MCP Framework
+# MCP Server
 
-A clean architecture framework for building Model Context Protocol (MCP) services with Google APIs.
-
-## Overview
-
-This project provides a robust, modular architecture for building services that interact with Google APIs (Gmail, Calendar, etc.) through standardized MCP tools. The implementation follows clean architecture principles, separating concerns into layers:
-
-- **Core Layer**: Core business entities, use cases, and repository interfaces
-- **Infrastructure Layer**: Implementation of repository interfaces and external services
-- **Interfaces Layer**: API and SSE implementations for exposing MCP tools
+A modern, maintainable server implementation for handling Google API integrations with proper authentication and error handling.
 
 ## Features
 
-- **Clean Architecture**: Separation of concerns with domain-driven design
-- **Structured Logging**: Comprehensive tracing and monitoring
-- **Repository Pattern**: Abstract data access for testability and flexibility
-- **Dependency Injection**: Loose coupling between components
-- **OAuth Authentication**: Support for Google OAuth flows
-- **SSE Streaming**: Real-time updates through Server-Sent Events
-- **Type Safety**: Full type annotations for better development experience
+- Google OAuth2 authentication
+- Gmail API integration
+- Calendar API integration
+- Proper error handling and logging
+- Configuration management
+- Type hints and documentation
+- CORS support
+- Docker support
 
-## Project Structure
+## Prerequisites
 
-```
-src/
-  core/                      # Core domain layer
-    entities/                # Domain entities
-      google_auth.py         # Auth entities
-      gmail.py               # Gmail entities
-      calendar.py            # Calendar entities
-    repositories/            # Repository interfaces
-      auth_repository.py     # Auth repository interface
-      gmail_repository.py    # Gmail repository interface
-      calendar_repository.py # Calendar repository interface
-    use_cases/               # Application use cases
-      authenticate.py        # Auth use cases
-      gmail.py               # Gmail use cases
-      calendar.py            # Calendar use cases
-    logging/                 # Logging utilities
-      logger.py              # Logger configuration and utilities
-  infrastructure/            # Infrastructure layer
-    repositories/            # Repository implementations
-      google_auth_repository.py  # Google Auth implementation
-      gmail_repository.py    # Gmail API implementation
-      calendar_repository.py # Calendar API implementation
-  interfaces/                # Interface layer
-    api/                     # API interfaces
-      gmail.py               # Gmail API interface
-      calendar.py            # Calendar API interface
-      oauth.py               # OAuth API interface
-templates/                  # HTML templates
-  oauth_callback.html       # OAuth callback template
-server.py                   # Main server entry point
-```
+- Python 3.8+
+- Docker (optional)
+- Google Cloud Platform account with API credentials
 
-## Installation
+## Setup
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/mcp-sse.git
-   cd mcp-sse
-   ```
+```bash
+git clone https://github.com/yourusername/mcp-sse.git
+cd mcp-sse
+```
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+2. Create a virtual environment:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
 
-3. Set up Google OAuth credentials:
-   - Create a project in the [Google Cloud Console](https://console.cloud.google.com/)
-   - Enable the APIs you need (Gmail, Calendar, etc.)
-   - Create OAuth credentials and download as `credentials.json`
-   - Place `credentials.json` in the project root
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Create a `.env` file in the root directory:
+```env
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
+```
+
+## Configuration
+
+The application uses `pydantic-settings` for configuration management. You can configure the following settings in your `.env` file:
+
+- `MCP_HOST`: Host to bind the MCP server to (default: "0.0.0.0")
+- `MCP_PORT`: Port for the MCP server (default: 8000)
+- `AUTH_PORT`: Port for the auth server (default: 8001)
+- `GOOGLE_CLIENT_ID`: Your Google OAuth client ID
+- `GOOGLE_CLIENT_SECRET`: Your Google OAuth client secret
+- `SESSION_EXPIRY`: Session expiry time in seconds (default: 3600)
 
 ## Running the Server
 
-Run the main server with default settings:
+### Development
 
 ```bash
 python server.py
 ```
 
-### Command Line Options
-
-The server supports various command line options:
-
-```bash
-python server.py --help
-```
-
-Available options:
-
-- `--host`: Host to bind to (default: 0.0.0.0)
-- `--port`: Port for MCP server (default: 8000)
-- `--debug`: Enable debug mode
-- `--log-level`: Logging level (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- `--log-format`: Logging format (json or text)
-- `--log-file`: Log file path (logs to console if not specified)
-
-Examples:
-
-```bash
-# Run with debug mode and detailed logging
-python server.py --debug --log-level=DEBUG --log-format=text
-
-# Specify host, port and log to file
-python server.py --host=127.0.0.1 --port=9000 --log-file=logs/server.log
-```
-
-## Logging and Tracing
-
-The application uses structured logging to provide detailed information about operations. When using JSON logging format, logs contain contextual information like:
-
-- Timestamp and level
-- Function name and module
-- Trace IDs for request correlation
-- Detailed request/response information
-- Performance metrics (execution time)
-
-### Log Levels
-
-- **TRACE**: Detailed tracing information (function entry/exit, parameters)
-- **DEBUG**: Debug information useful during development
-- **INFO**: General operational information
-- **WARNING**: Warning events that might need attention
-- **ERROR**: Error events that might still allow the application to continue
-- **CRITICAL**: Critical events that might prevent the application from continuing
-
-## Using Docker
-
-Build and run the services using Docker:
-
-```bash
-docker build -t google-mcp-services .
-docker run -p 8000:8000 google-mcp-services
-```
-
-Or use Docker Compose:
+### Docker
 
 ```bash
 docker-compose up
 ```
 
-## MCP Tool Integration
+## API Endpoints
 
-The framework exposes MCP tools for integration with AI assistants. Available tools include:
+### Authentication
 
-### Gmail Tools
+- `GET /auth/start`: Start OAuth flow
+- `GET /auth/status`: Check authentication status
+- `GET /auth/callback`: OAuth callback endpoint
 
-- `get_auth_status`: Check OAuth authentication status
-- `list_emails`: List emails with optional filtering
-- `get_email`: Get details of a specific email
-- `get_labels`: List available Gmail labels
-- `search_emails`: Search for emails using Gmail query syntax
-- `get_attachment`: Get email attachment data
+### Gmail
 
-### Calendar Tools (Coming Soon)
+- `GET /gmail/messages`: List messages
+- `GET /gmail/messages/{message_id}`: Get message details
+- `POST /gmail/messages`: Send message
 
-- `list_calendar_events`: List calendar events
-- `get_event`: Get details of a specific event
-- `create_event`: Create a new event
-- `update_event`: Update an existing event
-- `delete_event`: Delete an event
-- `search_events`: Search for events
+### Calendar
+
+- `GET /calendar/events`: List events
+- `POST /calendar/events`: Create event
+- `GET /calendar/events/{event_id}`: Get event details
+
+## Error Handling
+
+The application uses custom exceptions for better error handling:
+
+- `MCPError`: Base exception for all MCP-related errors
+- `AuthenticationError`: Raised when authentication fails
+- `AuthorizationError`: Raised when authorization fails
+- `ValidationError`: Raised when input validation fails
+- `ResourceNotFoundError`: Raised when a requested resource is not found
+- `ServiceUnavailableError`: Raised when a service is unavailable
+
+## Logging
+
+The application uses structured logging with the following features:
+
+- Console and file logging
+- JSON format for machine readability
+- Different log levels (INFO, ERROR, etc.)
+- Contextual information in log messages
+
+## Development
+
+### Code Style
+
+The project uses:
+- Black for code formatting
+- isort for import sorting
+- flake8 for linting
+- mypy for type checking
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Type Checking
+
+```bash
+mypy .
+```
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Commit your changes: `git commit -am 'Add some feature'`
-4. Push to the branch: `git push origin feature-name`
-5. Submit a pull request
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-MIT 
+This project is licensed under the MIT License - see the LICENSE file for details. 
