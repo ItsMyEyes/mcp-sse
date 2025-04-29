@@ -2,7 +2,6 @@ import os
 import json
 import datetime
 import secrets
-import asyncio
 import base64
 from typing import List, Dict, Optional, Tuple, Any
 from google.oauth2.credentials import Credentials
@@ -15,183 +14,12 @@ from mcp.server.sse import SseServerTransport
 from starlette.requests import Request as StarletteRequest
 from starlette.routing import Mount, Route
 from mcp.server import Server
-import uvicorn
-from fastapi import FastAPI, HTTPException
-from fastapi.requests import Request as FastAPIRequest
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-import httpx
-
-# Initialize FastAPI app
-fastapi_app = FastAPI(title="Google Gmail OAuth")
+from google_services.auth.google_auth import GoogleUnifiedAuth, GMAIL_SCOPE
+from typing import Sequence
+from starlette.routing import BaseRoute
 
 # Initialize FastMCP server
 app = FastMCP('google-gmail')
-
-# OAuth configuration
-REDIRECT_URI = "https://oauth.kiyora.dev/oauth/callback/google-gmail"
-OAUTH_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
-
-# MCP tools
-FASTAPI_PORT = 8001
-MCP_PORT = 8081
-
-# Templates
-templates = Jinja2Templates(directory="templates")
-
-class GoogleGmailAuth:
-    def __init__(self, credentials_file: str = 'credentials.json', token_file: str = 'gmail_tokens.json', sessions_file: str = 'gmail_sessions.json'):
-        self.credentials_file = credentials_file
-        self.token_file = token_file
-        self.sessions_file = sessions_file
-        self.tokens: Dict[str, Dict] = {}  # Changed to use session_id as key
-        self.sessions: Dict[str, Dict] = {}
-        self._load_tokens()
-        self._load_sessions()
-
-    def _load_tokens(self) -> None:
-        """Load tokens from the JSON file."""
-        if os.path.exists(self.token_file):
-            with open(self.token_file, 'r') as f:
-                self.tokens = json.load(f)
-
-    def _save_tokens(self) -> None:
-        """Save tokens to the JSON file."""
-        with open(self.token_file, 'w') as f:
-            json.dump(self.tokens, f, indent=2)
-
-    def _load_sessions(self) -> None:
-        """Load sessions from the JSON file."""
-        if os.path.exists(self.sessions_file):
-            with open(self.sessions_file, 'r') as f:
-                self.sessions = json.load(f)
-
-    def _save_sessions(self) -> None:
-        """Save sessions to the JSON file."""
-        with open(self.sessions_file, 'w') as f:
-            json.dump(self.sessions, f, indent=2)
-
-    def create_session(self, session_id: str) -> str:
-        """Create a new session."""
-        self.sessions[session_id] = {
-            'created_at': datetime.datetime.utcnow().isoformat(),
-            'status': 'pending',
-            'redirect_uri': REDIRECT_URI
-        }
-        self._save_sessions()
-        return session_id
-
-    def get_session(self, session_id: str) -> Optional[Dict]:
-        """Get session information."""
-        return self.sessions.get(session_id)
-
-    def update_session(self, session_id: str, status: str, token_data: Optional[Dict] = None) -> None:
-        """Update session status and token data."""
-        if session_id in self.sessions:
-            self.sessions[session_id]['status'] = status
-            if token_data:
-                self.sessions[session_id]['token_data'] = token_data
-            self._save_sessions()
-
-    def get_credentials(self, session_id: str) -> Optional[Credentials]:
-        """Get credentials for a specific session."""
-        token_data = self.tokens.get(session_id)
-        if not token_data:
-            return None
-
-        creds = Credentials.from_authorized_user_info(
-            {
-                'token': token_data['token'],
-                'refresh_token': token_data.get('refresh_token'),
-                'token_uri': 'https://oauth2.googleapis.com/token',
-                'client_id': token_data.get('client_id'),
-                'client_secret': token_data.get('client_secret'),
-                'scopes': OAUTH_SCOPES
-            }
-        )
-
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(GoogleRequest())
-            token_data['token'] = creds.token
-            self._save_tokens()
-
-        return creds
-
-    def get_auth_url(self, session_id: str) -> str:
-        """Get OAuth2 authorization URL for a session."""
-        # Load client configuration
-        with open(self.credentials_file, 'r') as f:
-            client_config = json.load(f)
-        
-        # Create flow instance
-        flow = Flow.from_client_config(
-            client_config,
-            scopes=OAUTH_SCOPES,
-            redirect_uri=REDIRECT_URI
-        )
-        
-        # Generate authorization URL
-        auth_url, _ = flow.authorization_url(
-            access_type='offline',
-            state=session_id,
-            prompt='consent',
-        )
-        return auth_url
-
-    def authenticate(self, session_id: str) -> Tuple[Optional[Credentials], Optional[str]]:
-        """Authenticate a session and return credentials and auth URL if needed."""
-        creds = self.get_credentials(session_id)
-        if creds:
-            return creds, None
-
-        # Create a new session if it doesn't exist
-        if session_id not in self.sessions:
-            self.create_session(session_id)
-        auth_url = self.get_auth_url(session_id)
-        return None, auth_url
-
-    def handle_oauth_callback(self, session_id: str, code: str) -> Optional[Credentials]:
-        """Handle OAuth callback from oauth.kiyora.dev."""
-        session = self.get_session(session_id)
-        if not session:
-            return None
-
-        try:
-            # Load client configuration
-            with open(self.credentials_file, 'r') as f:
-                client_config = json.load(f)
-            
-            # Create flow instance
-            flow = Flow.from_client_config(
-                client_config,
-                scopes=OAUTH_SCOPES,
-                redirect_uri=REDIRECT_URI
-            )
-            
-            # Exchange code for tokens
-            flow.fetch_token(code=code)
-            creds = flow.credentials
-
-            # Save the credentials
-            token_data = {
-                'token': creds.token,
-                'refresh_token': creds.refresh_token,
-                'client_id': creds.client_id,
-                'client_secret': creds.client_secret
-            }
-            
-            # Save token data
-            self.tokens[session_id] = token_data
-            self._save_tokens()
-
-            # Update session status
-            self.update_session(session_id, 'completed', token_data)
-            
-            return creds
-        except Exception as e:
-            self.update_session(session_id, 'failed')
-            raise e
 
 class GmailAPI:
     """
@@ -202,7 +30,7 @@ class GmailAPI:
     
     def __init__(self):
         """Initialize the Gmail API interface."""
-        self.auth = GoogleGmailAuth()
+        self.auth = GoogleUnifiedAuth()
     
     async def list_messages(
         self, 
@@ -223,7 +51,7 @@ class GmailAPI:
         Returns:
             Dict containing message list results
         """
-        creds, auth_url = self.auth.authenticate(session_id)
+        creds, auth_url = self.auth.authenticate(session_id, scope=GMAIL_SCOPE)
         
         if not creds:
             return {
@@ -496,90 +324,6 @@ class GmailAPI:
 # Create a shared API instance
 gmail_api = GmailAPI()
 
-@fastapi_app.get("/oauth/callback/google-gmail")
-async def oauth_callback(request: FastAPIRequest, code: str, state: str):
-    """
-    Handle OAuth callback from Google.
-    
-    Args:
-        code: Authorization code from Google
-        state: Session ID from our application
-    """
-    if not state:
-        return templates.TemplateResponse(
-            "error.html",
-            {
-                "request": request,
-                "error": "Session ID is required"
-            }
-        )
-
-    try:
-        auth = GoogleGmailAuth()
-        creds = auth.handle_oauth_callback(state, code)
-        session = auth.get_session(state)
-        
-        if not session or not creds:
-            return templates.TemplateResponse(
-                "error.html",
-                {
-                    "request": request,
-                    "error": "Invalid session or authentication failed"
-                }
-            )
-        
-        # Return success page
-        return templates.TemplateResponse(
-            "success.html",
-            {
-                "request": request,
-                "status": "success"
-            }
-        )
-    except Exception as e:
-        return templates.TemplateResponse(
-            "error.html",
-            {
-                "request": request,
-                "error": str(e)
-            }
-        )
-
-@fastapi_app.get("/oauth/status/{session_id}")
-async def check_auth_status(session_id: str):
-    """
-    Check authentication status for a session.
-    
-    Args:
-        session_id: Session ID to check
-    """
-    auth = GoogleGmailAuth()
-    session = auth.get_session(session_id)
-    
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    return {
-        "status": session['status'],
-        "email": session.get('email', 'Unknown')
-    }
-
-@fastapi_app.get("/oauth/start")
-async def start_auth(request: StarletteRequest):
-    """
-    Start OAuth flow for a user.
-    """
-    auth = GoogleGmailAuth()
-    auth_url = auth.get_auth_url("")
-    
-    return templates.TemplateResponse(
-            "start.html",
-            {
-                "request": request,
-                "auth_url": auth_url
-            }
-        )
-
 @app.tool()
 async def get_auth_status(session_id: str) -> str:
     """
@@ -607,8 +351,8 @@ async def get_auth_status(session_id: str) -> str:
     if not session_id:
         return "Error: Session ID is required"
 
-    auth = GoogleGmailAuth()
-    creds, auth_url = auth.authenticate(session_id)
+    auth = GoogleUnifiedAuth()
+    creds, auth_url = auth.authenticate(session_id, scope=GMAIL_SCOPE)
     
     if creds:
         return "Status: Authenticated"
@@ -993,9 +737,10 @@ async def get_attachment(
     
     return result
 
-def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlette:
-    """Create a Starlette application that can serve the provided mcp server with SSE."""
-    sse = SseServerTransport("/google-gmail/messages/")
+def route_mcp() -> Sequence[BaseRoute]:
+    """Create routes for the Gmail MCP server with SSE."""
+    route = "gmail"
+    sse = SseServerTransport(f"/{route}/messages/")
 
     async def handle_sse(request: StarletteRequest) -> None:
         async with sse.connect_sse(
@@ -1003,50 +748,13 @@ def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlett
                 request.receive,
                 request._send,  # noqa: SLF001
         ) as (read_stream, write_stream):
-            await mcp_server.run(
+            await app._mcp_server.run(
                 read_stream,
                 write_stream,
-                mcp_server.create_initialization_options(),
+                app._mcp_server.create_initialization_options(),
             )
 
-    return Starlette(
-        debug=debug,
-        routes=[
-            Route("/google-gmail/sse", endpoint=handle_sse),
-            Mount("/google-gmail/messages/", app=sse.handle_post_message),
-        ],
-    )
-
-async def run_fastapi_server(host: str = "0.0.0.0", port: int = FASTAPI_PORT):
-    """Run the FastAPI server."""
-    config = uvicorn.Config(fastapi_app, host=host, port=port)
-    server = uvicorn.Server(config)
-    await server.serve()
-
-async def run_mcp_server(host: str = "0.0.0.0", port: int = MCP_PORT):
-    """Run the MCP server."""
-    mcp_server = app._mcp_server  # noqa: WPS437
-    starlette_app = create_starlette_app(mcp_server, debug=True)
-    config = uvicorn.Config(starlette_app, host=host, port=port)
-    server = uvicorn.Server(config)
-    await server.serve()
-
-async def main():
-    """Run both FastAPI and MCP servers concurrently."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Run Google Gmail MCP and FastAPI servers')
-    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--fastapi-port', type=int, default=FASTAPI_PORT, help='Port for FastAPI server')
-    parser.add_argument('--mcp-port', type=int, default=MCP_PORT, help='Port for MCP server')
-    args = parser.parse_args()
-
-    # Create tasks for both servers
-    fastapi_task = asyncio.create_task(run_fastapi_server(args.host, args.fastapi_port))
-    mcp_task = asyncio.create_task(run_mcp_server(args.host, args.mcp_port))
-
-    # Run both servers concurrently
-    await asyncio.gather(fastapi_task, mcp_task)
-
-if __name__ == "__main__":
-    asyncio.run(main()) 
+    return [
+        Route(f"/{route}/sse", endpoint=handle_sse),
+        Mount(f"/{route}/messages/", app=sse.handle_post_message),
+    ]
