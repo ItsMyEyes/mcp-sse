@@ -1,64 +1,53 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gmail OAuth Success</title>
+    <title>Authentication Successful</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f7f9fc;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
             text-align: center;
         }
-        .success-container {
-            background-color: #f0f8ff;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            margin-top: 40px;
-        }
-        h1 {
-            color: #2c8a56;
-        }
-        .icon {
-            font-size: 48px;
+        .success {
+            color: #4CAF50;
+            font-size: 24px;
             margin-bottom: 20px;
+            font-weight: bold;
         }
         .message {
+            margin-bottom: 30px;
+            line-height: 1.6;
+            color: #555;
+        }
+        .icon {
+            font-size: 56px;
             margin-bottom: 20px;
-        }
-        .close-button {
-            background-color: #4285F4;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        .close-button:hover {
-            background-color: #3367D6;
+            color: #4CAF50;
         }
     </style>
 </head>
 <body>
-    <div class="success-container">
-        <div class="icon">✅</div>
-        <h1>Authentication Successful</h1>
-        <p class="message">
-            Your Gmail account has been successfully connected. You can now close this window and return to the application.
-        </p>
-        <button class="close-button" onclick="window.close()">Close Window</button>
+    <div class="container">
+        <div class="icon">✓</div>
+        <div class="success">Authentication Successful!</div>
+        <div class="message">
+            Your Google account has been successfully authenticated. 
+            You can now close this window and return to the application.
+        </div>
     </div>
-    <script>
-        // Auto close after 5 seconds
-        setTimeout(function() {
-            window.close();
-        }, 5000);
-    </script>
 </body>
 </html> 

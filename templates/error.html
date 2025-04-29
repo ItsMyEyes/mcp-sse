@@ -1,84 +1,66 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gmail OAuth Error</title>
+    <title>Authentication Error</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f7f9fc;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
             text-align: center;
         }
-        .error-container {
-            background-color: #fff0f0;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            margin-top: 40px;
-        }
-        h1 {
-            color: #d32f2f;
-        }
-        .icon {
-            font-size: 48px;
+        .error {
+            color: #f44336;
+            font-size: 24px;
             margin-bottom: 20px;
+            font-weight: bold;
         }
         .message {
-            margin-bottom: 20px;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            color: #555;
         }
-        .error-details {
-            background-color: #f5f5f5;
-            padding: 10px;
+        .details {
+            background-color: #f8f8f8;
             border-radius: 4px;
-            text-align: left;
+            padding: 15px;
+            margin-top: 20px;
+            color: #666;
             font-family: monospace;
+            word-break: break-all;
+            text-align: left;
+        }
+        .icon {
+            font-size: 56px;
             margin-bottom: 20px;
-            overflow-wrap: break-word;
-        }
-        .close-button {
-            background-color: #757575;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        .close-button:hover {
-            background-color: #616161;
-        }
-        .retry-button {
-            background-color: #4285F4;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-right: 10px;
-        }
-        .retry-button:hover {
-            background-color: #3367D6;
+            color: #f44336;
         }
     </style>
 </head>
 <body>
-    <div class="error-container">
-        <div class="icon">❌</div>
-        <h1>Authentication Failed</h1>
-        <p class="message">
-            There was a problem connecting to your Gmail account.
-        </p>
-        <div class="error-details">
-            {{ error }}
+    <div class="container">
+        <div class="icon">✗</div>
+        <div class="error">Authentication Error</div>
+        <div class="message">
+            There was a problem during the authentication process.
+            Please try again or contact support if the issue persists.
         </div>
-        <button class="retry-button" onclick="window.location.href='/oauth/start'">Try Again</button>
-        <button class="close-button" onclick="window.close()">Close Window</button>
+        <div class="details">
+            Error details: {{ error }}
+        </div>
     </div>
 </body>
 </html> 

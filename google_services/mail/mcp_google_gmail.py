@@ -51,6 +51,8 @@ class GmailAPI:
         Returns:
             Dict containing message list results
         """
+        # Get schema definition for this operation
+        
         creds, auth_url = self.auth.authenticate(session_id, scope=GMAIL_SCOPE)
         
         if not creds:
@@ -140,6 +142,8 @@ class GmailAPI:
         Returns:
             Dict containing message details
         """
+        # Get schema definition for this operation
+        
         creds, auth_url = self.auth.authenticate(session_id)
         
         if not creds:
@@ -243,6 +247,8 @@ class GmailAPI:
         Returns:
             Dict containing labels
         """
+        # Get schema definition for this operation
+        
         creds, auth_url = self.auth.authenticate(session_id)
         
         if not creds:
@@ -320,6 +326,111 @@ class GmailAPI:
                 "status": "error",
                 "error": str(e)
             }
+            
+    async def send_email(
+        self,
+        session_id: str,
+        recipient: str,
+        body: str,
+        subject: str = "",
+        cc: List[str] = None,
+        bcc: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Send an email on behalf of the user.
+        
+        Args:
+            session_id: Session ID for authentication
+            recipient: Email address of the recipient
+            body: Body content of the email
+            subject: Subject of the email
+            cc: List of CC recipients
+            bcc: List of BCC recipients
+            
+        Returns:
+            Dict with status and message information
+        """
+        # Get schema definition for this operation
+        
+        creds, auth_url = self.auth.authenticate(session_id)
+        
+        if not creds:
+            return {
+                "status": "unauthenticated", 
+                "auth_url": auth_url
+            }
+        
+        try:
+            service = build('gmail', 'v1', credentials=creds)
+            
+            # Create email message
+            message = self._create_message(
+                sender="me",  # Use authenticated user
+                to=recipient,
+                subject=subject,
+                message_text=body,
+                cc=cc or [],
+                bcc=bcc or []
+            )
+            
+            # Send the message
+            sent_message = service.users().messages().send(
+                userId="me", 
+                body=message
+            ).execute()
+            
+            return {
+                "status": "success",
+                "message_id": sent_message.get("id"),
+                "thread_id": sent_message.get("threadId")
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def _create_message(
+        self,
+        sender: str,
+        to: str,
+        subject: str,
+        message_text: str,
+        cc: List[str] = None,
+        bcc: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create an email message for sending.
+        
+        Args:
+            sender: Email sender
+            to: Email recipient
+            subject: Email subject
+            message_text: Email body text
+            cc: List of CC recipients
+            bcc: List of BCC recipients
+            
+        Returns:
+            Dict with raw base64 encoded email
+        """
+        from email.mime.text import MIMEText
+        import base64
+        
+        message = MIMEText(message_text)
+        message['to'] = to
+        message['from'] = sender
+        message['subject'] = subject
+        
+        if cc:
+            message['cc'] = ", ".join(cc)
+        if bcc:
+            message['bcc'] = ", ".join(bcc)
+            
+        # Encode as base64 URL-safe string
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        
+        return {'raw': raw_message}
 
 # Create a shared API instance
 gmail_api = GmailAPI()
@@ -736,6 +847,73 @@ async def get_attachment(
     result = await gmail_api.get_attachment(session_id, message_id, attachment_id)
     
     return result
+
+@app.tool()
+async def send_email(
+    session_id: str,
+    recipient: str,
+    body: str,
+    subject: str = "",
+    cc: List[str] = None,
+    bcc: List[str] = None
+) -> str:
+    """
+    Send an email through Gmail on behalf of the user.
+    
+    Usage:
+    - Send emails from your Gmail account
+    - Compose and send new messages
+    - Communicate with others via email
+    
+    Parameters:
+        session_id (str): Unique identifier for the user's session
+        recipient (str): Email address of the recipient
+        body (str): Content of the email
+        subject (str, optional): Subject line of the email
+        cc (list, optional): List of email addresses to CC
+        bcc (list, optional): List of email addresses to BCC
+        
+    Returns:
+        str: Text response with send status
+        - If successful: "Email sent successfully! Message ID: [id]"
+        - If unauthenticated: "Status: Unauthenticated\nPlease authenticate here: [auth_url]"
+        - If error: "Error: [error_message]"
+        
+    Example:
+        result = await send_email(
+            "abc123",
+            "recipient@example.com",
+            "Hello, this is a test email.",
+            "Test Email",
+            cc=["cc@example.com"]
+        )
+        # Sends an email and returns status
+    """
+    if not session_id:
+        return "Error: Session ID is required"
+    
+    if not recipient:
+        return "Error: Recipient email is required"
+    
+    if not body:
+        return "Error: Email body is required"
+
+    result = await gmail_api.send_email(
+        session_id=session_id,
+        recipient=recipient,
+        body=body,
+        subject=subject,
+        cc=cc,
+        bcc=bcc
+    )
+    
+    if result.get("status") == "unauthenticated":
+        return f"Status: Unauthenticated\nPlease authenticate here: {result.get('auth_url')}"
+    
+    if result.get("status") == "error":
+        return f"Error: {result.get('error')}"
+    
+    return f"Email sent successfully! Message ID: {result.get('message_id')}"
 
 def route_mcp() -> Sequence[BaseRoute]:
     """Create routes for the Gmail MCP server with SSE."""

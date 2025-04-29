@@ -12,13 +12,14 @@ GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar'
 
 # Default redirect URI
-REDIRECT_URI = "https://oauth.kiyora.dev/callback"
+DEFAULT_REDIRECT_URI = "https://oauthlaptop.kiyora.dev/auth/callback"
 
 class GoogleUnifiedAuth:
     def __init__(self, credentials_file: str = 'credentials.json', sessions_file: str = 'sessions.json'):
         self.credentials_file = credentials_file
         self.sessions_file = sessions_file
         self.sessions: Dict[str, Dict] = {}
+        self.REDIRECT_URI = DEFAULT_REDIRECT_URI
         self._load_sessions()
 
     def _load_sessions(self) -> None:
@@ -56,7 +57,7 @@ class GoogleUnifiedAuth:
         self.sessions[session_id] = {
             'created_at': datetime.datetime.utcnow().isoformat(),
             'status': 'pending',
-            'redirect_uri': REDIRECT_URI,
+            'redirect_uri': self.REDIRECT_URI,
             'scopes': scopes,
             'token_data': None
         }
@@ -156,7 +157,7 @@ class GoogleUnifiedAuth:
         flow = Flow.from_client_config(
             client_config,
             scopes=scopes,
-            redirect_uri=REDIRECT_URI
+            redirect_uri=self.REDIRECT_URI
         )
         
         # Generate authorization URL
@@ -246,7 +247,7 @@ class GoogleUnifiedAuth:
             flow = Flow.from_client_config(
                 client_config,
                 scopes=scopes,
-                redirect_uri=REDIRECT_URI
+                redirect_uri=self.REDIRECT_URI
             )
             
             # Exchange code for tokens
